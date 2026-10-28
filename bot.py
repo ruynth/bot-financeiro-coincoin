@@ -11,7 +11,7 @@ CHAVE_TELEGRAM = os.environ.get("CHAVE_TELEGRAM")
 CHAVE_GEMINI = os.environ.get("CHAVE_GEMINI")
 URL_PLANILHA = os.environ.get("URL_PLANILHA")
 CREDENCIAIS_JSON = os.environ.get("CREDENCIAIS_GOOGLE")
-URL_RENDER = os.environ.get("URL_RENDER") # Nova variável!
+URL_RENDER = "https://nome-do-seu-projeto.onrender.com"
 
 app = Flask(__name__)
 bot = telebot.TeleBot(CHAVE_TELEGRAM)
