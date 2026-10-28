@@ -7,11 +7,14 @@ from datetime import datetime
 from flask import Flask, request
 from threading import Thread
 
-CHAVE_TELEGRAM = os.environ.get("CHAVE_TELEGRAM")
-CHAVE_GEMINI = os.environ.get("CHAVE_GEMINI")
-URL_PLANILHA = os.environ.get("URL_PLANILHA")
-CREDENCIAIS_JSON = os.environ.get("CREDENCIAIS_GOOGLE")
-URL_RENDER = "https://nome-do-seu-projeto.onrender.com"
+# 1. BLINDAGEM: LIMPA TODOS OS ESPAÇOS INVISÍVEIS NA RAIZ
+CHAVE_TELEGRAM = str(os.environ.get("CHAVE_TELEGRAM")).strip()
+CHAVE_GEMINI = str(os.environ.get("CHAVE_GEMINI")).strip()
+URL_PLANILHA = str(os.environ.get("URL_PLANILHA")).strip()
+CREDENCIAIS_JSON = str(os.environ.get("CREDENCIAIS_GOOGLE")).strip()
+
+# Variável nativa do Render que descobre o próprio link automaticamente!
+URL_RENDER = str(os.environ.get("RENDER_EXTERNAL_URL")).strip().rstrip('/')
 
 app = Flask(__name__)
 bot = telebot.TeleBot(CHAVE_TELEGRAM)
@@ -79,7 +82,7 @@ def receber_gasto(mensagem):
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
 
 # ==========================================
-# MOTOR DO WEBHOOK (O SEGREDO DA VELOCIDADE)
+# ROTAS DO WEBHOOK
 # ==========================================
 @app.route('/')
 def home():
@@ -87,18 +90,20 @@ def home():
 
 @app.route('/' + CHAVE_TELEGRAM, methods=['POST'])
 def webhook():
-    # Lê a mensagem do Telegram e processa em segundo plano
-    update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
-    Thread(target=bot.process_new_updates, args=([update],)).start()
-    return "OK", 200
+    try:
+        # Extração de dados mais segura para o Flask
+        json_string = request.get_data().decode("utf-8")
+        print("📥 Nova mensagem recebida do Telegram!") 
+        update = telebot.types.Update.de_json(json_string)
+        Thread(target=bot.process_new_updates, args=([update],)).start()
+        return "OK", 200
+    except Exception as e:
+        print(f"Erro no webhook: {e}")
+        return "Erro", 500
 
 if __name__ == "__main__":
-    # Força a limpeza de espaços invisíveis e barras acidentais
-    url_limpa = str(URL_RENDER).strip().rstrip('/')
-    token_limpo = str(CHAVE_TELEGRAM).strip()
-    
-    webhook_final = f"{url_limpa}/{token_limpo}"
-    print(f"🔗 URL do Webhook gerada: {webhook_final}") # Mostra no log para investigarmos
+    webhook_final = f"{URL_RENDER}/{CHAVE_TELEGRAM}"
+    print(f"🔗 URL do Webhook ativada: {webhook_final}")
     
     bot.remove_webhook()
     bot.set_webhook(url=webhook_final)
