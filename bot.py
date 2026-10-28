@@ -41,6 +41,46 @@ def extrair_dados(mensagem):
     texto_limpo = resposta.text.replace("```json", "").replace("```", "").strip()
     return json.loads(texto_limpo)
 
+# NOVO COMANDO: GERA O RESUMO DE GASTOS
+@bot.message_handler(commands=['resumo'])
+def mostrar_resumo(mensagem):
+    msg_espera = bot.reply_to(mensagem, "📊 Calculando seu histórico...")
+    
+    try:
+        dados = aba.get_all_values()
+        
+        if len(dados) <= 1:
+            bot.edit_message_text("Nenhum gasto registrado ainda.", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+            return
+
+        resumo_categorias = {}
+        total_geral = 0.0
+
+        for linha in dados[1:]:
+            if len(linha) >= 4:
+                valor_str = str(linha[2]).replace('R$', '').replace(',', '.').strip()
+                try:
+                    valor = float(valor_str)
+                except ValueError:
+                    continue
+                
+                categoria = linha[3]
+                resumo_categorias[categoria] = resumo_categorias.get(categoria, 0) + valor
+                total_geral += valor
+
+        texto_resposta = "📊 **Resumo de Gastos**\n\n"
+        for cat, val in resumo_categorias.items():
+            texto_resposta += f"📂 {cat}: R$ {val:.2f}\n"
+        
+        texto_resposta += f"\n💰 **Total Geral: R$ {total_geral:.2f}**"
+
+        bot.delete_message(mensagem.chat.id, msg_espera.message_id)
+        bot.send_message(mensagem.chat.id, texto_resposta, parse_mode='Markdown')
+
+    except Exception as e:
+        bot.edit_message_text(f"❌ Erro ao gerar resumo: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+
+# MENSAGENS NORMAIS: ADICIONA NOVO GASTO (DEVE FICAR POR ÚLTIMO)
 @bot.message_handler(func=lambda message: True)
 def receber_gasto(mensagem):
     msg_espera = bot.reply_to(mensagem, "⏳ Processando...")
