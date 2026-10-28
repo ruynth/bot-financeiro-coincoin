@@ -93,7 +93,15 @@ def webhook():
     return "OK", 200
 
 if __name__ == "__main__":
+    # Força a limpeza de espaços invisíveis e barras acidentais
+    url_limpa = str(URL_RENDER).strip().rstrip('/')
+    token_limpo = str(CHAVE_TELEGRAM).strip()
+    
+    webhook_final = f"{url_limpa}/{token_limpo}"
+    print(f"🔗 URL do Webhook gerada: {webhook_final}") # Mostra no log para investigarmos
+    
     bot.remove_webhook()
-    bot.set_webhook(url=f"{URL_RENDER}/{CHAVE_TELEGRAM}")
+    bot.set_webhook(url=webhook_final)
+    
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
