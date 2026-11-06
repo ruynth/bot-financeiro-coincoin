@@ -29,19 +29,22 @@ client_groq = Groq(api_key=CHAVE_GROQ)
 def extrair_dados(mensagem):
     prompt = f"""Analise este gasto: "{mensagem}"
     Responda EXCLUSIVAMENTE em formato JSON com:
-    "descricao", "valor" (com ponto decimal) e "categoria" (Alimentação, Transporte, Lazer, Educação, Moradia, Saúde ou Outros).
+    "descricao", 
+    "valor" (com ponto decimal), 
+    "categoria" (Alimentação, Transporte, Lazer, Educação, Moradia, Saúde ou Outros),
+    "pagamento" (Cartão de Débito, Cartão de Crédito, Pix ou Dinheiro).
     Sem markdown."""
     
     resposta = client_groq.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model="qwen/qwen3.8-27b",
+        model="qwen/qwen3.8-27b", # Ou o modelo que você escolheu
         temperature=0,
         response_format={"type": "json_object"}
     )
     
     texto_json = resposta.choices[0].message.content
     return json.loads(texto_json)
-
+    
 # 4. COMANDOS DO TELEGRAM
 @bot.message_handler(commands=['resumo'])
 def mostrar_resumo(mensagem):
@@ -76,6 +79,7 @@ def mostrar_resumo(mensagem):
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
 
 @bot.message_handler(commands=['desfazer'])
+
 def apagar_ultima_linha(mensagem):
     msg_espera = bot.reply_to(mensagem, "🗑️ Apagando o último registro...")
     try:
@@ -99,29 +103,34 @@ def apagar_ultima_linha(mensagem):
         bot.edit_message_text(f"❌ Erro ao apagar: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
 
 @bot.message_handler(commands=['zerar'])
+@bot.message_handler(commands=['zerar'])
+
 def zerar_planilha(mensagem):
     msg_espera = bot.reply_to(mensagem, "⚠️ Apagando TODOS os registros...")
     try:
-        # Limpa absolutamente tudo da aba (dados e formatações)
         aba.clear()
+        # Cabeçalho atualizado com 5 colunas
+        aba.append_row(["Data", "Descrição", "Valor", "Categoria", "Pagamento"])
         
-        # Recria o cabeçalho para as próximas inserções funcionarem perfeitamente
-        aba.append_row(["Data", "Descrição", "Valor", "Categoria"])
-        
-        bot.edit_message_text("✅ **Planilha resetada!** Todos os gastos foram apagados permanentemente e a aba está limpa.", chat_id=mensagem.chat.id, message_id=msg_espera.message_id, parse_mode='Markdown')
+        bot.edit_message_text("✅ **Planilha resetada!** Cabeçalho novo criado com sucesso.", chat_id=mensagem.chat.id, message_id=msg_espera.message_id, parse_mode='Markdown')
         
     except Exception as e:
         bot.edit_message_text(f"❌ Erro ao tentar zerar: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
-
+        
 @bot.message_handler(func=lambda message: True)
+@bot.message_handler(func=lambda message: True)
+
 def receber_gasto(mensagem):
     msg_espera = bot.reply_to(mensagem, "⏳ Processando...")
     try:
         dados = extrair_dados(mensagem.text)
-        nova_linha = [datetime.now().strftime("%d/%m/%Y"), dados['descricao'], dados['valor'], dados['categoria']]
+        # Agora a lista tem 5 colunas, incluindo o pagamento no final!
+        nova_linha = [datetime.now().strftime("%d/%m/%Y"), dados['descricao'], dados['valor'], dados['categoria'], dados['pagamento']]
         aba.append_row(nova_linha)
         bot.delete_message(mensagem.chat.id, msg_espera.message_id)
-        resposta_final = f"✅ **Salvo!**\n🛒 Item: {dados['descricao']}\n💰 Valor: R$ {dados['valor']}\n📂 Categoria: {dados['categoria']}"
+        
+        # Resposta bonita e formatada
+        resposta_final = f"✅ **Salvo!**\n🛒 Item: {dados['descricao']}\n💰 Valor: R$ {dados['valor']}\n📂 Categoria: {dados['categoria']}\n💳 Pagamento: {dados['pagamento']}"
         bot.send_message(mensagem.chat.id, resposta_final, parse_mode='Markdown')
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
