@@ -1,62 +1,48 @@
 import telebot
-import time
 import gspread
-from google import genai
 import json
 import os
 from datetime import datetime
 from flask import Flask, request
 from threading import Thread
+from groq import Groq
 
-# 1. BLINDAGEM: LIMPA TODOS OS ESPAÇOS INVISÍVEIS NA RAIZ
+# 1. BLINDAGEM DAS VARIÁVEIS DE AMBIENTE
 CHAVE_TELEGRAM = str(os.environ.get("CHAVE_TELEGRAM")).strip()
-CHAVE_GEMINI = str(os.environ.get("CHAVE_GEMINI")).strip()
+CHAVE_GROQ = str(os.environ.get("CHAVE_GROQ")).strip()
 URL_PLANILHA = str(os.environ.get("URL_PLANILHA")).strip()
 CREDENCIAIS_JSON = str(os.environ.get("CREDENCIAIS_GOOGLE")).strip()
-
-# Variável nativa do Render que descobre o próprio link automaticamente!
 URL_RENDER = str(os.environ.get("RENDER_EXTERNAL_URL")).strip().rstrip('/')
 
 app = Flask(__name__)
 bot = telebot.TeleBot(CHAVE_TELEGRAM)
 
+# 2. CONEXÃO COM GOOGLE SHEETS E GROQ
 credenciais_dict = json.loads(CREDENCIAIS_JSON)
 gc = gspread.service_account_from_dict(credenciais_dict)
 planilha = gc.open_by_url(URL_PLANILHA)
 aba = planilha.sheet1
 
-client_gemini = genai.Client(api_key=CHAVE_GEMINI)
+client_groq = Groq(api_key=CHAVE_GROQ)
 
+# 3. EXTRAÇÃO DE DADOS (MOTOR LLAMA 3 - GROQ)
 def extrair_dados(mensagem):
     prompt = f"""Analise este gasto: "{mensagem}"
     Responda EXCLUSIVAMENTE em formato JSON com:
     "descricao", "valor" (com ponto decimal) e "categoria" (Alimentação, Transporte, Lazer, Educação, Moradia, Saúde ou Outros).
-    Sem markdown.
-    """
+    Sem markdown."""
     
-    # Estratégia de Fallback: O modelo principal e o "estepe"
-    modelos = ['gemini-1.5-flash', 'gemini-1.5-flash-8b']
+    resposta = client_groq.chat.completions.create(
+        messages=[{"role": "user", "content": prompt}],
+        model="llama3-8b-8192",
+        temperature=0,
+        response_format={"type": "json_object"}
+    )
     
-    tentativas = 4
-    espera = 2 # Começa esperando 2 segundos
-    
-    for i in range(tentativas):
-        # Alterna entre os modelos caso um falhe
-        modelo_atual = modelos[i % len(modelos)] 
-        
-        try:
-            resposta = client_gemini.models.generate_content(model=modelo_atual, contents=prompt)
-            texto_limpo = resposta.text.replace("```json", "").replace("```", "").strip()
-            return json.loads(texto_limpo)
-            
-        except Exception as e:
-            print(f"⚠️ Servidor lotado. Falha na tentativa {i+1} com {modelo_atual}: {e}")
-            if i < tentativas - 1:
-                time.sleep(espera)
-                espera *= 2 # Espera Exponencial: vai para 4s, depois 8s...
-            else:
-                raise Exception("Ambos os servidores da IA estão congestionados agora. Tente de novo em 1 minutinho.")
-                
+    texto_json = resposta.choices[0].message.content
+    return json.loads(texto_json)
+
+# 4. COMANDOS DO TELEGRAM
 @bot.message_handler(commands=['resumo'])
 def mostrar_resumo(mensagem):
     msg_espera = bot.reply_to(mensagem, "📊 Calculando...")
@@ -89,7 +75,6 @@ def mostrar_resumo(mensagem):
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
 
-
 @bot.message_handler(commands=['desfazer'])
 def apagar_ultima_linha(mensagem):
     msg_espera = bot.reply_to(mensagem, "🗑️ Apagando o último registro...")
@@ -98,7 +83,7 @@ def apagar_ultima_linha(mensagem):
         total_linhas = len(dados)
         
         if total_linhas <= 1:
-            bot.edit_message_text("A planilha já está vazia. Não há o que apagar.", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+            bot.edit_message_text("A planilha já está vazia.", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
             return
         
         ultima_linha = dados[-1]
@@ -107,11 +92,11 @@ def apagar_ultima_linha(mensagem):
         
         aba.delete_rows(total_linhas)
         
-        mensagem_sucesso = f"✅ **Gasto desfeito com sucesso!**\n\nO item '{item_apagado}' de R$ {valor_apagado} foi removido da planilha."
+        mensagem_sucesso = f"✅ **Desfeito!**\n\n'{item_apagado}' (R$ {valor_apagado}) removido."
         bot.edit_message_text(mensagem_sucesso, chat_id=mensagem.chat.id, message_id=msg_espera.message_id, parse_mode='Markdown')
         
     except Exception as e:
-        bot.edit_message_text(f"❌ Erro ao tentar apagar: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+        bot.edit_message_text(f"❌ Erro ao apagar: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
 
 @bot.message_handler(func=lambda message: True)
 def receber_gasto(mensagem):
@@ -126,19 +111,15 @@ def receber_gasto(mensagem):
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
 
-# ==========================================
-# ROTAS DO WEBHOOK
-# ==========================================
+# 5. ROTAS DO WEBHOOK (FLASK)
 @app.route('/')
 def home():
-    return "Bot online via Webhook!"
+    return "Bot online via Webhook com motor Groq!"
 
 @app.route('/' + CHAVE_TELEGRAM, methods=['POST'])
 def webhook():
     try:
-        # Extração de dados mais segura para o Flask
         json_string = request.get_data().decode("utf-8")
-        print("📥 Nova mensagem recebida do Telegram!") 
         update = telebot.types.Update.de_json(json_string)
         Thread(target=bot.process_new_updates, args=([update],)).start()
         return "OK", 200
