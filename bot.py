@@ -98,6 +98,21 @@ def apagar_ultima_linha(mensagem):
     except Exception as e:
         bot.edit_message_text(f"❌ Erro ao apagar: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
 
+@bot.message_handler(commands=['zerar'])
+def zerar_planilha(mensagem):
+    msg_espera = bot.reply_to(mensagem, "⚠️ Apagando TODOS os registros...")
+    try:
+        # Limpa absolutamente tudo da aba (dados e formatações)
+        aba.clear()
+        
+        # Recria o cabeçalho para as próximas inserções funcionarem perfeitamente
+        aba.append_row(["Data", "Descrição", "Valor", "Categoria"])
+        
+        bot.edit_message_text("✅ **Planilha resetada!** Todos os gastos foram apagados permanentemente e a aba está limpa.", chat_id=mensagem.chat.id, message_id=msg_espera.message_id, parse_mode='Markdown')
+        
+    except Exception as e:
+        bot.edit_message_text(f"❌ Erro ao tentar zerar: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+
 @bot.message_handler(func=lambda message: True)
 def receber_gasto(mensagem):
     msg_espera = bot.reply_to(mensagem, "⏳ Processando...")
