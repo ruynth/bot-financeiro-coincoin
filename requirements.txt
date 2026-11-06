@@ -1,4 +1,4 @@
 pyTelegramBotAPI
 gspread
-google-genai
 flask
+groq
