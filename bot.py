@@ -34,21 +34,29 @@ def extrair_dados(mensagem):
     Sem markdown.
     """
     
-    # Lógica de Retry: Tenta conectar com a IA até 3 vezes
-    tentativas = 3
+    # Estratégia de Fallback: O modelo principal e o "estepe"
+    modelos = ['gemini-1.5-flash', 'gemini-1.5-flash-8b']
+    
+    tentativas = 4
+    espera = 2 # Começa esperando 2 segundos
+    
     for i in range(tentativas):
+        # Alterna entre os modelos caso um falhe
+        modelo_atual = modelos[i % len(modelos)] 
+        
         try:
-            resposta = client_gemini.models.generate_content(model='gemini-1.5-flash', contents=prompt)
+            resposta = client_gemini.models.generate_content(model=modelo_atual, contents=prompt)
             texto_limpo = resposta.text.replace("```json", "").replace("```", "").strip()
             return json.loads(texto_limpo)
+            
         except Exception as e:
-            print(f"⚠️ Falha na tentativa {i+1} com o Gemini: {e}")
+            print(f"⚠️ Servidor lotado. Falha na tentativa {i+1} com {modelo_atual}: {e}")
             if i < tentativas - 1:
-                time.sleep(2) # Pausa de 2 segundos para dar fôlego ao servidor do Google
+                time.sleep(espera)
+                espera *= 2 # Espera Exponencial: vai para 4s, depois 8s...
             else:
-                # Se falhar nas 3 tentativas, devolve um aviso amigável
-                raise Exception("O servidor da IA está superlotado no momento. Tente de novo em alguns instantes.")
-
+                raise Exception("Ambos os servidores da IA estão congestionados agora. Tente de novo em 1 minutinho.")
+                
 @bot.message_handler(commands=['resumo'])
 def mostrar_resumo(mensagem):
     msg_espera = bot.reply_to(mensagem, "📊 Calculando...")
