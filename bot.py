@@ -110,6 +110,99 @@ def apagar_ultima_linha(mensagem):
 @bot.message_handler(commands=['zerar'])
 @bot.message_handler(commands=['zerar'])
 
+@bot.message_handler(commands=['mes'])
+def resumo_mes(mensagem):
+    msg_espera = bot.reply_to(mensagem, "📊 Calculando o mês...")
+    try:
+        # Pega o mês digitado (ex: /mes 11/2026) ou usa o mês atual por padrão
+        comando = mensagem.text.split()
+        if len(comando) > 1:
+            mes_ano_alvo = comando[1]
+        else:
+            mes_ano_alvo = datetime.now().strftime("%m/%Y")
+            
+        dados = aba.get_all_values()
+        if len(dados) <= 1:
+            bot.edit_message_text("Planilha vazia.", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+            return
+            
+        resumo_categorias = {}
+        total_geral = 0.0
+        
+        for linha in dados[1:]:
+            if len(linha) >= 5:
+                data_gasto = linha[0] # Pega a coluna Data (DD/MM/YYYY)
+                # Verifica se a data do gasto termina com o mês/ano que queremos
+                if data_gasto.endswith(mes_ano_alvo):
+                    valor_str = str(linha[2]).replace('R$', '').replace(',', '.').strip()
+                    try:
+                        valor = float(valor_str)
+                    except ValueError:
+                        continue
+                    categoria = linha[3]
+                    resumo_categorias[categoria] = resumo_categorias.get(categoria, 0) + valor
+                    total_geral += valor
+
+        if total_geral == 0:
+            bot.edit_message_text(f"Nenhum gasto encontrado para {mes_ano_alvo}.", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+            return
+
+        texto_resposta = f"📊 **Resumo de {mes_ano_alvo}**\n\n"
+        for cat, val in resumo_categorias.items():
+            texto_resposta += f"📂 {cat}: R$ {val:.2f}\n"
+        texto_resposta += f"\n💰 **Total do Mês: R$ {total_geral:.2f}**"
+        
+        bot.edit_message_text(texto_resposta, chat_id=mensagem.chat.id, message_id=msg_espera.message_id, parse_mode='Markdown')
+    except Exception as e:
+        bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+
+@bot.message_handler(commands=['exportar'])
+def exportar_planilha(mensagem):
+    msg_espera = bot.reply_to(mensagem, "📁 Gerando arquivo CSV...")
+    try:
+        comando = mensagem.text.split()
+        mes_ano_alvo = comando[1] if len(comando) > 1 else None
+
+        dados = aba.get_all_values()
+        if len(dados) <= 1:
+            bot.edit_message_text("A planilha está vazia.", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+            return
+            
+        # Cria um arquivo CSV na memória do Render
+        output = io.StringIO()
+        # delimiter=';' ajuda o Excel brasileiro a ler as colunas automaticamente
+        writer = csv.writer(output, delimiter=';') 
+        writer.writerow(dados[0]) # Escreve o cabeçalho
+        
+        linhas_exportadas = 0
+        for linha in dados[1:]:
+            # Se pediu um mês específico, filtra. Se não, salva tudo.
+            if mes_ano_alvo:
+                if len(linha) > 0 and linha[0].endswith(mes_ano_alvo):
+                    writer.writerow(linha)
+                    linhas_exportadas += 1
+            else:
+                writer.writerow(linha)
+                linhas_exportadas += 1
+                
+        if linhas_exportadas == 0:
+            bot.edit_message_text("Nenhum dado encontrado para exportar neste filtro.", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+            return
+            
+        # Converte o arquivo para um formato que o Telegram aceita enviar
+        arquivo_bytes = io.BytesIO(output.getvalue().encode('utf-8-sig'))
+        nome_arquivo = f"gastos_{mes_ano_alvo.replace('/', '_')}.csv" if mes_ano_alvo else "todos_os_gastos.csv"
+        arquivo_bytes.name = nome_arquivo
+        
+        bot.delete_message(mensagem.chat.id, msg_espera.message_id)
+        bot.send_document(mensagem.chat.id, arquivo_bytes, caption=f"✅ Relatório gerado com {linhas_exportadas} registros!")
+        
+    except Exception as e:
+        bot.edit_message_text(f"❌ Erro ao exportar: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+
+
+
+
 def zerar_planilha(mensagem):
     msg_espera = bot.reply_to(mensagem, "⚠️ Apagando TODOS os registros...")
     try:
