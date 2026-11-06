@@ -38,7 +38,7 @@ def extrair_dados(mensagem):
     tentativas = 3
     for i in range(tentativas):
         try:
-            resposta = client_gemini.models.generate_content(model='gemini-3.8-flash', contents=prompt)
+            resposta = client_gemini.models.generate_content(model='gemini-1.5-flash', contents=prompt)
             texto_limpo = resposta.text.replace("```json", "").replace("```", "").strip()
             return json.loads(texto_limpo)
         except Exception as e:
@@ -80,6 +80,30 @@ def mostrar_resumo(mensagem):
         bot.send_message(mensagem.chat.id, texto_resposta, parse_mode='Markdown')
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+
+
+@bot.message_handler(commands=['desfazer'])
+def apagar_ultima_linha(mensagem):
+    msg_espera = bot.reply_to(mensagem, "🗑️ Apagando o último registro...")
+    try:
+        dados = aba.get_all_values()
+        total_linhas = len(dados)
+        
+        if total_linhas <= 1:
+            bot.edit_message_text("A planilha já está vazia. Não há o que apagar.", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+            return
+        
+        ultima_linha = dados[-1]
+        item_apagado = ultima_linha[1] if len(ultima_linha) > 1 else "Item"
+        valor_apagado = ultima_linha[2] if len(ultima_linha) > 2 else "0"
+        
+        aba.delete_rows(total_linhas)
+        
+        mensagem_sucesso = f"✅ **Gasto desfeito com sucesso!**\n\nO item '{item_apagado}' de R$ {valor_apagado} foi removido da planilha."
+        bot.edit_message_text(mensagem_sucesso, chat_id=mensagem.chat.id, message_id=msg_espera.message_id, parse_mode='Markdown')
+        
+    except Exception as e:
+        bot.edit_message_text(f"❌ Erro ao tentar apagar: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
 
 @bot.message_handler(func=lambda message: True)
 def receber_gasto(mensagem):
