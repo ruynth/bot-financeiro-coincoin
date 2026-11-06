@@ -1,4 +1,5 @@
 import telebot
+import time
 import gspread
 from google import genai
 import json
@@ -32,9 +33,21 @@ def extrair_dados(mensagem):
     "descricao", "valor" (com ponto decimal) e "categoria" (Alimentação, Transporte, Lazer, Educação, Moradia, Saúde ou Outros).
     Sem markdown.
     """
-    resposta = client_gemini.models.generate_content(model='gemini-3.8-flash', contents=prompt)
-    texto_limpo = resposta.text.replace("```json", "").replace("```", "").strip()
-    return json.loads(texto_limpo)
+    
+    # Lógica de Retry: Tenta conectar com a IA até 3 vezes
+    tentativas = 3
+    for i in range(tentativas):
+        try:
+            resposta = client_gemini.models.generate_content(model='gemini-3.8-flash', contents=prompt)
+            texto_limpo = resposta.text.replace("```json", "").replace("```", "").strip()
+            return json.loads(texto_limpo)
+        except Exception as e:
+            print(f"⚠️ Falha na tentativa {i+1} com o Gemini: {e}")
+            if i < tentativas - 1:
+                time.sleep(2) # Pausa de 2 segundos para dar fôlego ao servidor do Google
+            else:
+                # Se falhar nas 3 tentativas, devolve um aviso amigável
+                raise Exception("O servidor da IA está superlotado no momento. Tente de novo em alguns instantes.")
 
 @bot.message_handler(commands=['resumo'])
 def mostrar_resumo(mensagem):
