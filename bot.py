@@ -49,7 +49,8 @@ def extrair_dados(mensagem):
     
     resposta = client_groq.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model="llama-3.3-70b-versatile", # Mantenha o modelo que funcionou para você
+        model="qwen/qwen3.8-27b",
+ # Mantenha o modelo que funcionou para você
         temperature=0,
         response_format={"type": "json_object"}
     )
