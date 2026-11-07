@@ -29,28 +29,35 @@ client_groq = Groq(api_key=CHAVE_GROQ)
 
 # 3. EXTRAÇÃO DE DADOS (MOTOR LLAMA 3 - GROQ)
 def extrair_dados(mensagem):
-    # O bot descobre que dia é hoje e avisa a IA
     data_hoje = datetime.now().strftime("%d/%m/%Y")
     
-    prompt = f"""Analise este gasto: "{mensagem}"
+    prompt = f"""Analise os gastos descritos aqui: "{mensagem}"
     Considere que hoje é dia {data_hoje}.
-    Responda EXCLUSIVAMENTE em formato JSON com as chaves:
-    "data" (calcule a data correta no formato DD/MM/YYYY baseando-se no texto. Se o texto não citar quando foi, use a data de hoje),
+    Pode haver um ou mais gastos na mesma mensagem.
+    Responda EXCLUSIVAMENTE em formato JSON contendo uma lista chamada "gastos", onde cada item tem as chaves:
+    "data" (formato DD/MM/YYYY. Se não citar quando foi, use a data de hoje),
     "descricao", 
     "valor" (apenas números com ponto decimal), 
     "categoria" (Alimentação, Transporte, Lazer, Educação, Moradia, Saúde ou Outros),
     "pagamento" (Cartão de Débito, Cartão de Crédito, Pix ou Dinheiro).
-    Não use markdown, devolva apenas o JSON."""
+    
+    Exemplo de estrutura de resposta esperada:
+    {{"gastos": [
+        {{"data": "...", "descricao": "...", "valor": 10.5, "categoria": "...", "pagamento": "..."}},
+        {{"data": "...", "descricao": "...", "valor": 50.0, "categoria": "...", "pagamento": "..."}}
+    ]}}"""
     
     resposta = client_groq.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model="qwen/qwen3.8-27b", # Certifique-se de manter o modelo que funcionou para si
+        model="llama-3.3-70b-versatile", # Mantenha o modelo que funcionou para você
         temperature=0,
         response_format={"type": "json_object"}
     )
     
     texto_json = resposta.choices[0].message.content
-    return json.loads(texto_json)
+    # Retorna apenas a lista de gastos que está dentro do JSON
+    return json.loads(texto_json)["gastos"]
+
     
 # 4. COMANDOS DO TELEGRAM
 @bot.message_handler(commands=['resumo'])
@@ -222,20 +229,32 @@ def zerar_planilha(mensagem):
 
 @bot.message_handler(func=lambda message: True)
 def receber_gasto(mensagem):
-    msg_espera = bot.reply_to(mensagem, "⏳ Processando...")
+    msg_espera = bot.reply_to(mensagem, "⏳ Processando lançamentos...")
     try:
-        dados = extrair_dados(mensagem.text)
+        # Agora a extração devolve uma lista de gastos
+        lista_gastos = extrair_dados(mensagem.text)
         
-        # Agora a linha pega a "data" diretamente do cérebro da IA
-        nova_linha = [dados['data'], dados['descricao'], dados['valor'], dados['categoria'], dados['pagamento']]
-        aba.append_row(nova_linha)
+        linhas_para_inserir = []
+        resposta_final = f"✅ **{len(lista_gastos)} lançamento(s) salvo(s)!**\n\n"
+        
+        for dados in lista_gastos:
+            # Puxa os dados de cada gasto individual
+            nova_linha = [dados['data'], dados['descricao'], dados['valor'], dados['categoria'], dados['pagamento']]
+            linhas_para_inserir.append(nova_linha)
+            
+            # Monta o texto de confirmação para o Telegram
+            resposta_final += f"🛒 {dados['descricao']} | 💰 R$ {dados['valor']}\n"
+            resposta_final += f"📅 {dados['data']} | 📂 {dados['categoria']} | 💳 {dados['pagamento']}\n\n"
+        
+        # O método append_rows (no plural) envia todas as linhas para o Sheets de uma vez só!
+        aba.append_rows(linhas_para_inserir)
+        
         bot.delete_message(mensagem.chat.id, msg_espera.message_id)
+        bot.send_message(mensagem.chat.id, resposta_final.strip(), parse_mode='Markdown')
         
-        # A resposta agora também mostra a data calculada
-        resposta_final = f"✅ **Salvo!**\n📅 Data: {dados['data']}\n🛒 Item: {dados['descricao']}\n💰 Valor: R$ {dados['valor']}\n📂 Categoria: {dados['categoria']}\n💳 Pagamento: {dados['pagamento']}"
-        bot.send_message(mensagem.chat.id, resposta_final, parse_mode='Markdown')
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+
 
 # 5. ROTAS DO WEBHOOK (FLASK)
 @app.route('/')
