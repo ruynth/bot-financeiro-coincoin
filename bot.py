@@ -183,7 +183,7 @@ def receber_gasto(mensagem):
         
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
-)
+
 
 # 5. ROTAS DO WEBHOOK
 @app.route('/')
