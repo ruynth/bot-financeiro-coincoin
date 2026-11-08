@@ -161,13 +161,16 @@ def receber_gasto(mensagem):
         # Cabeçalho mantendo a contagem e o nome de quem registrou
         resposta_final = f"✅ **{len(lista_gastos)} registro(s) de {nome_usuario} salvo(s)!**\n\n"
         
-        for dados in lista_gastos:
+                for dados in lista_gastos:
             icone = "🟢" if dados['tipo'] == "Receita" else "🔴"
             
-            # Prepara a linha para salvar no Google Sheets
-            linhas_para_inserir.append([dados['data'], nome_usuario, dados['tipo'], dados['descricao'], dados['valor'], dados['categoria'], dados['pagamento']])
+            # 1. Troca o ponto por vírgula para o Google Sheets entender que é número
+            valor_planilha = str(dados['valor']).replace('.', ',')
             
-            # Monta a mensagem visual detalhada (igual à antiga, mas com o tipo)
+            # Prepara a linha usando a nova variável 'valor_planilha'
+            linhas_para_inserir.append([dados['data'], nome_usuario, dados['tipo'], dados['descricao'], valor_planilha, dados['categoria'], dados['pagamento']])
+            
+            # Monta a mensagem visual detalhada para o Telegram
             resposta_final += f"{icone} **{dados['tipo']}**\n"
             resposta_final += f"📅 Data: {dados['data']}\n"
             resposta_final += f"🛒 Item: {dados['descricao']}\n"
@@ -175,7 +178,8 @@ def receber_gasto(mensagem):
             resposta_final += f"📂 Categoria: {dados['categoria']}\n"
             resposta_final += f"💳 Pagamento: {dados['pagamento']}\n\n"
             
-        aba.append_rows(linhas_para_inserir)
+        aba.append_rows(linhas_para_inserir, value_input_option="USER_ENTERED")
+
         bot.delete_message(mensagem.chat.id, msg_espera.message_id)
         
         # O strip() no final remove espaços em branco sobrando e deixa a mensagem alinhada
