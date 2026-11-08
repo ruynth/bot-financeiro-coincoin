@@ -151,26 +151,39 @@ def apagar_ultima_linha(mensagem):
 @bot.message_handler(func=lambda message: True)
 def receber_gasto(mensagem):
     if not tem_permissao(mensagem): return
-    msg_espera = bot.reply_to(mensagem, "⏳ Registando...")
+    msg_espera = bot.reply_to(mensagem, "⏳ Registrando...")
     try:
         lista_gastos = extrair_dados(mensagem.text)
         linhas_para_inserir = []
-        # Captura o nome da pessoa no Telegram!
+        # Captura o nome da pessoa no Telegram
         nome_usuario = mensagem.from_user.first_name 
         
-        resposta_final = f"✅ **{len(lista_gastos)} registo(s) de {nome_usuario} salvo(s)!**\n\n"
+        # Cabeçalho mantendo a contagem e o nome de quem registrou
+        resposta_final = f"✅ **{len(lista_gastos)} registro(s) de {nome_usuario} salvo(s)!**\n\n"
         
         for dados in lista_gastos:
             icone = "🟢" if dados['tipo'] == "Receita" else "🔴"
+            
+            # Prepara a linha para salvar no Google Sheets
             linhas_para_inserir.append([dados['data'], nome_usuario, dados['tipo'], dados['descricao'], dados['valor'], dados['categoria'], dados['pagamento']])
-            resposta_final += f"{icone} {dados['descricao']} | R$ {dados['valor']}\n"
+            
+            # Monta a mensagem visual detalhada (igual à antiga, mas com o tipo)
+            resposta_final += f"{icone} **{dados['tipo']}**\n"
+            resposta_final += f"📅 Data: {dados['data']}\n"
+            resposta_final += f"🛒 Item: {dados['descricao']}\n"
+            resposta_final += f"💰 Valor: R$ {dados['valor']}\n"
+            resposta_final += f"📂 Categoria: {dados['categoria']}\n"
+            resposta_final += f"💳 Pagamento: {dados['pagamento']}\n\n"
             
         aba.append_rows(linhas_para_inserir)
         bot.delete_message(mensagem.chat.id, msg_espera.message_id)
-        bot.send_message(mensagem.chat.id, resposta_final.strip())
+        
+        # O strip() no final remove espaços em branco sobrando e deixa a mensagem alinhada
+        bot.send_message(mensagem.chat.id, resposta_final.strip(), parse_mode='Markdown')
         
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+)
 
 # 5. ROTAS DO WEBHOOK
 @app.route('/')
