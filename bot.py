@@ -37,7 +37,7 @@ def tem_permissao(mensagem):
     bot.reply_to(mensagem, texto_bloqueio, parse_mode='Markdown')
     return False
 
-# 3. EXTRAÇÃO DE DADOS (AGORA COM RECEITAS)
+# 3. EXTRAÇÃO DE DADOS (AGORA COM REGRAS MAIS RÍGIDAS)
 def extrair_dados(mensagem):
     data_hoje = datetime.now().strftime("%d/%m/%Y")
     
@@ -46,7 +46,7 @@ def extrair_dados(mensagem):
     Responda EXCLUSIVAMENTE em JSON contendo uma lista "movimentacoes". Cada item tem:
     "data" (DD/MM/YYYY),
     "tipo" ("Despesa" ou "Receita"),
-    "descricao", 
+    "descricao" (Apenas o nome do item/serviço limpo. NUNCA inclua o valor numérico, nem as palavras 'reais', 'dinheiro' ou a forma de pagamento nesta chave), 
     "valor" (apenas números com ponto), 
     "categoria" (Alimentação, Transporte, Lazer, Educação, Moradia, Saúde, Salário ou Outros),
     "pagamento" (Cartão de Débito, Cartão de Crédito, Pix ou Dinheiro)."""
@@ -58,6 +58,7 @@ def extrair_dados(mensagem):
         response_format={"type": "json_object"}
     )
     return json.loads(resposta.choices[0].message.content)["movimentacoes"]
+
 
 # 4. COMANDOS DO BOT
 @bot.message_handler(commands=['zerar'])
