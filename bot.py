@@ -135,6 +135,20 @@ def exportar_planilha(mensagem):
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
 
+@bot.message_handler(commands=['painel', 'dashboard'])
+def enviar_painel(mensagem):
+    if not tem_permissao(mensagem): return
+    
+    # Substitua este link pelo link real do seu site no Streamlit
+    link_do_site = "https://SEU_LINK_AQUI.streamlit.app"
+    
+    texto = "📊 **O seu Painel Financeiro está online!**\n\n"
+    texto += "Acesse o link abaixo para visualizar os seus gráficos de receitas, despesas e o balanço completo:\n\n"
+    texto += f"🌐 {link_do_site}"
+    
+    bot.reply_to(mensagem, texto, parse_mode='Markdown')
+
+
 @bot.message_handler(commands=['desfazer'])
 def apagar_ultima_linha(mensagem):
     if not tem_permissao(mensagem): return
