@@ -148,6 +148,7 @@ def apagar_ultima_linha(mensagem):
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
 
+
 @bot.message_handler(func=lambda message: True)
 def receber_gasto(mensagem):
     if not tem_permissao(mensagem): return
@@ -161,7 +162,7 @@ def receber_gasto(mensagem):
         # Cabeçalho mantendo a contagem e o nome de quem registrou
         resposta_final = f"✅ **{len(lista_gastos)} registro(s) de {nome_usuario} salvo(s)!**\n\n"
         
-                for dados in lista_gastos:
+        for dados in lista_gastos:
             icone = "🟢" if dados['tipo'] == "Receita" else "🔴"
             
             # 1. Troca o ponto por vírgula para o Google Sheets entender que é número
@@ -187,6 +188,7 @@ def receber_gasto(mensagem):
         
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
+
 
 
 # 5. ROTAS DO WEBHOOK
