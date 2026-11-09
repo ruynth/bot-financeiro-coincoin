@@ -8,6 +8,7 @@ from datetime import datetime
 from flask import Flask, request
 from threading import Thread
 from groq import Groq
+from urllib.parse import quote
 
 # 1. VARIÁVEIS DE AMBIENTE E TRAVA
 CHAVE_TELEGRAM = str(os.environ.get("CHAVE_TELEGRAM")).strip()
@@ -32,7 +33,7 @@ def tem_permissao(mensagem):
     id_usuario = str(mensagem.chat.id)
     if id_usuario in IDS_PERMITIDOS:
         return True
-    
+
     texto_bloqueio = f"⛔ **Acesso Negado.**\n\nSeu ID do Telegram é: `{id_usuario}`\n\nEnvie este número para o administrador liberar seu acesso."
     bot.reply_to(mensagem, texto_bloqueio, parse_mode='Markdown')
     return False
@@ -40,7 +41,7 @@ def tem_permissao(mensagem):
 # 3. EXTRAÇÃO DE DADOS (AGORA COM REGRAS MAIS RÍGIDAS)
 def extrair_dados(mensagem):
     data_hoje = datetime.now().strftime("%d/%m/%Y")
-    
+
     prompt = f"""Analise as movimentações: "{mensagem}"
     Hoje é dia {data_hoje}.
     Responda EXCLUSIVAMENTE em JSON contendo uma lista "movimentacoes". Cada item tem:
@@ -50,7 +51,7 @@ def extrair_dados(mensagem):
     "valor" (apenas números com ponto), 
     "categoria" (Alimentação, Transporte, Lazer, Educação, Moradia, Saúde, Salário ou Outros),
     "pagamento" (Cartão de Débito, Cartão de Crédito, Pix ou Dinheiro)."""
-    
+
     resposta = client_groq.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
         model="qwen/qwen3.8-27b",
@@ -58,7 +59,6 @@ def extrair_dados(mensagem):
         response_format={"type": "json_object"}
     )
     return json.loads(resposta.choices[0].message.content)["movimentacoes"]
-
 
 # 4. COMANDOS DO BOT
 @bot.message_handler(commands=['zerar'])
@@ -76,31 +76,33 @@ def zerar_planilha(mensagem):
 @bot.message_handler(commands=['mes'])
 def resumo_mes(mensagem):
     if not tem_permissao(mensagem): return
-    msg_espera = bot.reply_to(mensagem, "📊 Calculando o saldo do mês...")
+    msg_espera = bot.reply_to(mensagem, "📊 Calculando seu saldo...")
     try:
+        nome_usuario = mensagem.from_user.first_name
         comando = mensagem.text.split()
         mes_ano_alvo = comando[1] if len(comando) > 1 else datetime.now().strftime("%m/%Y")
-            
+
         dados = aba.get_all_values()
         total_receitas = 0.0
         total_despesas = 0.0
-        
+
         for linha in dados[1:]:
-            if len(linha) >= 7 and linha[0].endswith(mes_ano_alvo):
+            # Filtra apenas registros da data alvo E do usuário específico
+            if len(linha) >= 7 and linha[0].endswith(mes_ano_alvo) and linha[1] == nome_usuario:
                 tipo = linha[2]
                 try: valor = float(str(linha[4]).replace('R$', '').replace(',', '.').strip())
                 except: continue
-                
+
                 if tipo == "Receita": total_receitas += valor
                 else: total_despesas += valor
 
         saldo = total_receitas - total_despesas
 
-        texto = f"📊 **Balanço de {mes_ano_alvo}**\n\n"
+        texto = f"📊 **Balanço de {mes_ano_alvo} ({nome_usuario})**\n\n"
         texto += f"🟢 Receitas: R$ {total_receitas:.2f}\n"
         texto += f"🔴 Despesas: R$ {total_despesas:.2f}\n"
         texto += f"\n{'🔵' if saldo >= 0 else '⭕'} **Saldo Final: R$ {saldo:.2f}**"
-        
+
         bot.edit_message_text(texto, chat_id=mensagem.chat.id, message_id=msg_espera.message_id, parse_mode='Markdown')
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
@@ -108,45 +110,50 @@ def resumo_mes(mensagem):
 @bot.message_handler(commands=['exportar'])
 def exportar_planilha(mensagem):
     if not tem_permissao(mensagem): return
-    msg_espera = bot.reply_to(mensagem, "📁 Gerando arquivo CSV...")
+    msg_espera = bot.reply_to(mensagem, "📁 Gerando seu relatório...")
     try:
+        nome_usuario = mensagem.from_user.first_name
         comando = mensagem.text.split()
         mes_ano = comando[1] if len(comando) > 1 else None
         dados = aba.get_all_values()
         output = io.StringIO()
         writer = csv.writer(output, delimiter=';') 
         writer.writerow(dados[0])
-        
+
         linhas = 0
         for linha in dados[1:]:
-            if mes_ano:
-                if len(linha) > 0 and linha[0].endswith(mes_ano):
+            # Filtra apenas registros pertencentes ao usuário que enviou a mensagem
+            if len(linha) >= 7 and linha[1] == nome_usuario:
+                if mes_ano:
+                    if linha[0].endswith(mes_ano):
+                        writer.writerow(linha)
+                        linhas += 1
+                else:
                     writer.writerow(linha)
                     linhas += 1
-            else:
-                writer.writerow(linha)
-                linhas += 1
-                
+
         arquivo_bytes = io.BytesIO(output.getvalue().encode('utf-8-sig'))
-        arquivo_bytes.name = f"relatorio_{mes_ano.replace('/', '_')}.csv" if mes_ano else "relatorio_completo.csv"
-        
+        arquivo_bytes.name = f"relatorio_{nome_usuario}_{mes_ano.replace('/', '_') if mes_ano else 'completo'}.csv"
+
         bot.delete_message(mensagem.chat.id, msg_espera.message_id)
-        bot.send_document(mensagem.chat.id, arquivo_bytes, caption=f"✅ Relatório com {linhas} registros!")
+        bot.send_document(mensagem.chat.id, arquivo_bytes, caption=f"✅ Relatório de {nome_usuario} com {linhas} registros!")
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
 
 @bot.message_handler(commands=['painel', 'dashboard'])
 def enviar_painel(mensagem):
     if not tem_permissao(mensagem): return
-    
-    link_do_site = "https://bot-financeiro-coincoin-9gylfgnzc6abvlj8vtix5m.streamlit.app/"
-    
-    texto = "📊 **O seu Painel Financeiro está online!**\n\n"
-    texto += "Acesse o link abaixo para visualizar os seus gráficos de receitas, despesas e o balanço completo:\n\n"
-    texto += f"🌐 {link_do_site}"
-    
-    bot.reply_to(mensagem, texto, parse_mode='Markdown')
+    nome_usuario = mensagem.from_user.first_name
 
+    # Injeta automaticamente o nome do usuário na URL do Streamlit
+    link_base = "https://bot-financeiro-coincoin-9gylfgnzc6abvlj8vtix5m.streamlit.app/"
+    link_personalizado = f"{link_base}?usuario={quote(nome_usuario)}"
+
+    texto = f"📊 **Painel Financeiro de {nome_usuario}**\n\n"
+    texto += "Acesse o link abaixo para visualizar seus gráficos e movimentações individuais:\n\n"
+    texto += f"🌐 {link_personalizado}"
+
+    bot.reply_to(mensagem, texto, parse_mode='Markdown')
 
 @bot.message_handler(commands=['desfazer'])
 def apagar_ultima_linha(mensagem):
@@ -162,7 +169,6 @@ def apagar_ultima_linha(mensagem):
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
 
-
 @bot.message_handler(func=lambda message: True)
 def receber_gasto(mensagem):
     if not tem_permissao(mensagem): return
@@ -170,40 +176,30 @@ def receber_gasto(mensagem):
     try:
         lista_gastos = extrair_dados(mensagem.text)
         linhas_para_inserir = []
-        # Captura o nome da pessoa no Telegram
         nome_usuario = mensagem.from_user.first_name 
-        
-        # Cabeçalho mantendo a contagem e o nome de quem registrou
+
         resposta_final = f"✅ **{len(lista_gastos)} registro(s) de {nome_usuario} salvo(s)!**\n\n"
-        
+
         for dados in lista_gastos:
             icone = "🟢" if dados['tipo'] == "Receita" else "🔴"
-            
-            # 1. Troca o ponto por vírgula para o Google Sheets entender que é número
             valor_planilha = str(dados['valor']).replace('.', ',')
-            
-            # Prepara a linha usando a nova variável 'valor_planilha'
+
             linhas_para_inserir.append([dados['data'], nome_usuario, dados['tipo'], dados['descricao'], valor_planilha, dados['categoria'], dados['pagamento']])
-            
-            # Monta a mensagem visual detalhada para o Telegram
+
             resposta_final += f"{icone} **{dados['tipo']}**\n"
             resposta_final += f"📅 Data: {dados['data']}\n"
             resposta_final += f"🛒 Item: {dados['descricao']}\n"
             resposta_final += f"💰 Valor: R$ {dados['valor']}\n"
             resposta_final += f"📂 Categoria: {dados['categoria']}\n"
             resposta_final += f"💳 Pagamento: {dados['pagamento']}\n\n"
-            
+
         aba.append_rows(linhas_para_inserir, value_input_option="USER_ENTERED")
 
         bot.delete_message(mensagem.chat.id, msg_espera.message_id)
-        
-        # O strip() no final remove espaços em branco sobrando e deixa a mensagem alinhada
         bot.send_message(mensagem.chat.id, resposta_final.strip(), parse_mode='Markdown')
-        
+
     except Exception as e:
         bot.edit_message_text(f"❌ Erro: {e}", chat_id=mensagem.chat.id, message_id=msg_espera.message_id)
-
-
 
 # 5. ROTAS DO WEBHOOK
 @app.route('/')
