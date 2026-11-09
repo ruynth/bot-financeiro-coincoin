@@ -139,8 +139,7 @@ def exportar_planilha(mensagem):
 def enviar_painel(mensagem):
     if not tem_permissao(mensagem): return
     
-    # Substitua este link pelo link real do seu site no Streamlit
-    link_do_site = "https://SEU_LINK_AQUI.streamlit.app"
+    link_do_site = "https://bot-financeiro-coincoin-9gylfgnzc6abvlj8vtix5m.streamlit.app/"
     
     texto = "📊 **O seu Painel Financeiro está online!**\n\n"
     texto += "Acesse o link abaixo para visualizar os seus gráficos de receitas, despesas e o balanço completo:\n\n"
